@@ -1,0 +1,247 @@
+{
+	doc_url: "https://oswap.io/oswap-triangular-arb.json",
+	init: `{
+
+		$lib_aa = 'N7NRF3EZHGBK3KBCINKE7Z3GZGMFO4AS';
+
+		$asset = params.asset;
+		
+		$managers = var['managers'] OTHERWISE {};
+		$is_authorized = trigger.address == params.owner OR $managers[trigger.address];
+
+	}`,
+	messages: {
+		cases: [
+
+			// start arb A-B-C-A or A-C-B-A
+			{
+				if: `{ trigger.data.arb AND $is_authorized}`,
+				init: `{
+					$share = trigger.data.share OTHERWISE 1; // for incomplete arb
+					$secondary_share = trigger.data.secondary_share OTHERWISE 1; // for incomplete arb
+					$precalculated = trigger.data.amount AND trigger.data.from;
+					if (!$precalculated) {
+					
+						$oswap_aas = trigger.data.oswap_aas; // array
+						$arb_info = ($lib_aa||'')#36.$calc_arb_params(this_address, $asset, $oswap_aas, $share, $secondary_share);
+
+						$from = $arb_info.from;
+						$amount = $arb_info.amount;
+						$address = $arb_info.address;
+						$data = $arb_info.data;
+
+						$pAB = $arb_info.pAB;
+						$pBC = $arb_info.pBC;
+						$pCA = $arb_info.pCA;
+						$assetA = $arb_info.assetA;
+						$assetB = $arb_info.assetB;
+						$assetC = $arb_info.assetC;
+					}
+					else { // overridden in the request, don't calc
+						$amount = trigger.data.amount;
+						$from = trigger.data.from;
+						$address = $oswap_aas[0];
+						$data = {
+							final_price: trigger.data.final_pBA,
+							hops: [ // next oswap in the chain
+								{
+									address: $oswap_aas[1],
+									change_address: this_address,
+									data: {final_price: trigger.data.final_pCB},
+								},
+								{
+									address: $oswap_aas[2],
+									change_address: this_address,
+									data: {final_price: trigger.data.final_pAC},
+								},
+								{
+									address: this_address,
+								},
+							]
+						};
+						$pAB = 1/trigger.data.final_pBA;
+						$pBC = 1/trigger.data.final_pCB;
+						$pCA = 1/trigger.data.final_pAC;
+						$assetA = $asset;
+						$assetB = trigger.data.assetB;
+						$assetC = trigger.data.assetC;
+					}
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: `{$asset}`,
+							outputs: [
+								{address: "{$address}", amount: "{ $amount }"}
+							]
+						}
+					},
+					{
+						app: 'data',
+						payload: `{$data}`
+					},
+					{
+						app: 'state',
+						state: `{
+							$arb = {
+								from: $from,
+								pAB: $pAB,
+								pBC: $pBC,
+								pCA: $pCA,
+								assetA: $assetA,
+								assetB: $assetB,
+								assetC: $assetC,
+								oswap_aas: $oswap_aas,
+								sent: {},
+								received: {},
+							};
+							$arb.sent[$asset] = $amount;
+							var['arb'] = $arb;
+						//	log({arb: $arb});
+							response['sent_amount'] = $amount;
+							response['message'] = ($from == 'AB') 
+								? 'will arb by selling A to AB, then B to BC, then C to CA'
+								: 'will arb by selling A to AC, then C to CB, then B to BA';
+						}`
+					}
+				]
+			},
+
+
+			// receive the proceeds or receive the change
+			{
+				if: `{
+					$arb = var['arb'];
+					if (!$arb)
+						return false;
+					$receivedA = trigger.output[[asset=$arb.assetA]];
+					$receivedB = trigger.output[[asset=$arb.assetB]];
+					$receivedC = trigger.output[[asset=$arb.assetC]];
+					($receivedA > 0 OR $receivedB > 0 OR $receivedC > 0)
+				}`,
+				init: `{
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							$arb.received[$arb.assetA] = $arb.received[$arb.assetA] + $receivedA;
+							$arb.received[$arb.assetB] = $arb.received[$arb.assetB] + $receivedB;
+							$arb.received[$arb.assetC] = $arb.received[$arb.assetC] + $receivedC;
+							$change = $arb.from == 'AB' ? trigger.address != $arb.oswap_aas[2] : trigger.address != $arb.oswap_aas[0];
+							if ($change){
+								var['arb'] = $arb;
+								response['message'] = 'received the change from ' || trigger.address;
+								log('received the change from', trigger.address, $arb.received);
+								return;
+							}
+						//	log('received proceeds', $arb.received);
+							$sent = $arb.sent[$arb.assetA];
+							$received = $arb.received[$arb.assetA] + $arb.received[$arb.assetB] / $arb.pAB + $arb.received[$arb.assetC] / $arb.pAB / $arb.pBC;
+							$profit = $received - $sent;
+							require($profit > 0, "unprofitable " || $arb.from || ": " || $received || " < " || $sent);
+							response['profit'] = $profit; // in A
+							var['arb'] = false;
+						}`
+					}
+				]
+			},
+
+			// exchange B or C to A
+			{
+				if: `{ trigger.data.exchange AND trigger.data.oswap_aa AND $is_authorized }`,
+				init: `{
+					$oswap_aa = trigger.data.oswap_aa;
+					$share = trigger.data.share OTHERWISE 1; // for incomplete exchange
+					$exch_info = ($lib_aa||'')#10.$calc_exchange_params(this_address, $oswap_aa, $asset, $share);
+					$data = $exch_info.data;
+					$assetB = $exch_info.assetB;
+					response['message'] = "will exchange "||$assetB||" to main asset";
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: `{$assetB}`,
+							outputs: [
+								{address: "{$oswap_aa}"} // send all
+							]
+						}
+					},
+					{
+						app: 'data',
+						payload: `{$data}`
+					},
+				]
+			},
+
+			// withdraw
+			{
+				if: `{ trigger.data.withdraw AND trigger.data.asset AND trigger.address == params.owner }`,
+				init: `{
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: `{trigger.data.asset}`,
+							outputs: [
+								{address: "{params.owner}", amount: "{ trigger.data.amount OTHERWISE '' }"}
+							]
+						}
+					},
+				]
+			},
+
+			// add a manager
+			{
+				if: `{trigger.data.add_manager AND trigger.data.manager AND trigger.address == params.owner}`,
+				init: `{
+					require(is_valid_address(trigger.data.manager), "invalid address");
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							$managers[trigger.data.manager] = true;
+							var['managers'] = $managers;
+							response['message'] = 'added '||trigger.data.manager||' as manager';
+						}`
+					}
+				]
+			},
+
+			// remove a manager
+			{
+				if: `{trigger.data.remove_manager AND trigger.data.manager AND trigger.address == params.owner}`,
+				init: `{
+					require($managers[trigger.data.manager], "this address is not a manager");
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							delete($managers, trigger.data.manager);
+							var['managers'] = $managers;
+							response['message'] = 'removed '||trigger.data.manager||' as manager';
+						}`
+					}
+				]
+			},
+
+			// add capital
+			{
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							response['message'] = 'added';
+						}`
+					}
+				]
+			},
+
+		]
+	}
+}
