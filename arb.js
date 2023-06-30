@@ -290,6 +290,8 @@ async function findBestSharesForArb(arb_aa, oswap_aas, id) {
 		}
 		const { error } = arrResponses[0].response;
 		console.log(`shares ${share}/${secondary_share} would bounce: ` + error);
+		if (error.match(/no arb opportunity exists$/))
+			return {};
 		const arrMatches = error.match(/^one of secondary AAs bounced with error: (\w{32}: )?(\w{32}: )?(\w{32}: )?/);
 		if (!arrMatches || !arrMatches[1]) {
 			console.log(`unexpected bounce message`);
