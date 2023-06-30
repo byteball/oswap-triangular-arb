@@ -170,7 +170,7 @@ async function getUsdAmount(amount, asset) {
 }
 
 
-const max_balance_share = 0.01;
+const max_balance_share = 0.05;
 
 async function exchangeNonMainAssets() {
 	let bRemains = false;
