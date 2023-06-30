@@ -140,7 +140,7 @@ async function estimateAndArb(triangle) {
 
 	const { share, secondary_share, arrResponses } = await findBestSharesForArb(arb_aa, oswap_aas, id);
 	aa_unlock();
-	if (!share)
+	if (!share || !secondary_share)
 		return finish(`${id} arb would bounce`);
 	const arbResponses = arrResponses.filter(r => r.aa_address === arb_aa);
 	const lastResponse = arbResponses[arbResponses.length - 1];
@@ -297,13 +297,18 @@ async function findBestSharesForArb(arb_aa, oswap_aas, id) {
 			share = 0;
 			break;
 		}
-		if (arrMatches[3] || arrMatches[2])
+		if (arrMatches[3] || arrMatches[2]) {
 			secondary_share -= 0.1;
+			if (secondary_share < 0.7) {
+				secondary_share = 1;
+				share -= 0.1;
+			}
+		}
 		else
 			share -= 0.1;
 	}
 	console.log(`found shares ${share}/${secondary_share} for arb ${id} in ${Date.now() - start_ts}ms`);
-	if (share < 0)
+	if (share < 0.001)
 		share = 0;
 	if (secondary_share < 0)
 		secondary_share = 0;
