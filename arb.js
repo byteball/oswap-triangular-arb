@@ -16,6 +16,8 @@ const light_wallet = require("ocore/light_wallet.js");
 const dag = require('aabot/dag.js');
 const operator = require('aabot/operator.js');
 const aa_state = require('aabot/aa_state.js');
+const light_data_feeds = conf.bLight ? require('aabot/light_data_feeds.js') : null;
+
 const CurveAA = require('./curve.js');
 const xmutex = require("./xmutex");
 
@@ -621,6 +623,19 @@ async function watchOstableOswapArbs() {
 	}
 }
 
+async function watchOswapTokenArbs() {
+	const rows = await dag.getAAsByBaseAAs(conf.oswap_token_arb_base_aas);
+	for (let { address, definition } of rows) {
+		const { oswap_token_aa, oswap_v2_aa } = definition[1].params;
+		await aa_state.followAA(address);
+		await aa_state.followAA(oswap_token_aa);
+		await aa_state.followAA(oswap_v2_aa);
+
+		const oracle = await dag.executeGetter(oswap_token_aa, 'get_oracle');
+		await light_data_feeds.updateDataFeed(oracle, 'TVL');
+	}
+}
+
 async function startWatching() {
 	await loadLibs();
 	await initArbList();
@@ -636,6 +651,7 @@ async function startWatching() {
 	await watchForNewBuffers();
 
 	await watchOstableOswapArbs();
+	await watchOswapTokenArbs();
 
 	await light_wallet.waitUntilFirstHistoryReceived();
 
