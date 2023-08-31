@@ -244,7 +244,7 @@ function findBestPool(pools, asset) {
 		}
 	}
 	if (!best_pool)
-		throw Error(`best pool not found`);
+		throw Error(`best pool not found for asset ${a}, pools ${pools.join(', ')}`);
 	return best_pool;
 }
 
