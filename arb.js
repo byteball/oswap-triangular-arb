@@ -360,6 +360,21 @@ async function findBestShareForSwap(arb_aa, oswap_aa, amount_ratio) {
 	return share;
 }
 
+
+async function checkOswapAAsForSufficientBytes() {
+	console.log('checkOswapAAsForSufficientBytes');
+	const upcomingBalances = aa_state.getUpcomingBalances();
+	for (let oswap_aa in oswapInfos) {
+		if (upcomingBalances[oswap_aa].base <= 50000) {
+			console.log(`bytes balance of ${oswap_aa} is only ${upcomingBalances[oswap_aa].base}, will add`);
+			// the request will bounce but leave 10Kb on the AA
+			await dag.sendPayment({ to_address: oswap_aa, amount: 10000, is_aa: true });
+		}
+	}
+	console.log('checkOswapAAsForSufficientBytes done');
+}
+
+
 let assetInfos = {};
 async function getAssetInfo(asset){
 	if (asset == 'base')
@@ -664,6 +679,9 @@ async function startWatching() {
 	setInterval(exchangeNonMainAssets, 2 * 3600 * 1000);
 
 	setTimeout(estimateAndArbAll, 1000);
+
+	setTimeout(checkOswapAAsForSufficientBytes, 100);
+	setInterval(checkOswapAAsForSufficientBytes, 3600 * 1000);
 }
 
 
