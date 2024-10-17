@@ -670,6 +670,9 @@ async function startWatching() {
 
 	await light_wallet.waitUntilFirstHistoryReceived();
 
+	setTimeout(checkOswapAAsForSufficientBytes, 100);
+	setInterval(checkOswapAAsForSufficientBytes, 3600 * 1000);
+
 	await waitForStability();
 
 	eventBus.on("aa_request_applied", onAARequest);
@@ -679,9 +682,6 @@ async function startWatching() {
 	setInterval(exchangeNonMainAssets, 2 * 3600 * 1000);
 
 	setTimeout(estimateAndArbAll, 1000);
-
-	setTimeout(checkOswapAAsForSufficientBytes, 100);
-	setInterval(checkOswapAAsForSufficientBytes, 3600 * 1000);
 }
 
 
