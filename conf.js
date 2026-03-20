@@ -46,7 +46,10 @@ exports.ostable_oswap_arb_base_aas = ['B23R7Z5DR742TK7AV23TDJVY74J4KK23'];
 exports.oswap_token_arb_base_aas = ['JKPIRZII4IZCUTIWP3NVWLZDO4Q3A4BC'];
 
 exports.arb_base_aas = ['46VBWS62OL2RIQB324PHLRSFVGRC3RUF'];
-exports.oswap_base_aas = ['DYZOJKX4MJOQRAUPX7K6WCEV5STMKOHI'];
+exports.oswap_base_aas = [
+	'V3U7V4HPGG2RILPLD3UUJDJS66CYICJJ', // Mar 2026, todo: add to AAs
+	'DYZOJKX4MJOQRAUPX7K6WCEV5STMKOHI'
+];
 
 
 console.log('finished arb conf');
